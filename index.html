@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="SplitMate is a lightweight student expense tracker and split expense planner for monthly budgeting and group settlements."
+    />
+    <title>SplitMate | Track. Split. Save.</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="SplitMate home">
+          <div class="brand-mark">S</div>
+          <div>
+            <h1>SplitMate</h1>
+            <small>Track. Split. Save.</small>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <label class="month-picker" for="monthSelector">
+            <span>Month</span>
+            <select id="monthSelector" aria-label="Select month"></select>
+          </label>
+          <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode">
+            <span id="themeIcon">🌙</span>
+          </button>
+        </div>
+      </header>
+
+      <nav class="nav-tabs" aria-label="Primary navigation">
+        <button class="nav-btn active" type="button" data-view="dashboard">Dashboard</button>
+        <button class="nav-btn" type="button" data-view="expenses">Expenses</button>
+        <button class="nav-btn" type="button" data-view="split">Split</button>
+        <button class="nav-btn" type="button" data-view="groups">Groups</button>
+        <button class="nav-btn" type="button" data-view="statistics">Statistics</button>
+        <button class="nav-btn" type="button" data-view="settings">Settings</button>
+      </nav>
+
+      <main class="content">
+        <section id="dashboard" class="view active" aria-label="Dashboard section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Overview</p>
+              <h2>Monthly snapshot</h2>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <article class="kpi-card budget-card">
+              <p>Monthly Budget</p>
+              <h3 id="budgetValue">₹0</h3>
+            </article>
+            <article class="kpi-card spent-card">
+              <p>Spent</p>
+              <h3 id="spentValue">₹0</h3>
+            </article>
+            <article class="kpi-card remaining-card">
+              <p>Remaining</p>
+              <h3 id="remainingValue">₹0</h3>
+            </article>
+            <article class="kpi-card expenses-card">
+              <p>Expenses</p>
+              <h3 id="expenseCountValue">0</h3>
+            </article>
+          </div>
+
+          <div class="panel-grid">
+            <section class="panel" aria-labelledby="budget-panel-title">
+              <div class="panel-header">
+                <h3 id="budget-panel-title">Monthly Budget</h3>
+              </div>
+
+              <form id="budgetForm" class="stack-form">
+                <label for="budgetAmountInput">Budget amount</label>
+                <div class="input-row">
+                  <input id="budgetAmountInput" type="number" min="0" step="100" placeholder="8000" />
+                  <button type="submit" class="primary-button">Save</button>
+                </div>
+                <div class="inline-actions">
+                  <button type="button" id="resetBudgetBtn" class="secondary-button">Reset</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel balance-panel" aria-labelledby="shared-balance-title">
+              <div class="panel-header">
+                <h3 id="shared-balance-title">Shared balance</h3>
+              </div>
+              <div id="sharedBalanceDisplay" class="balance-display" aria-live="polite">Settled</div>
+              <p id="sharedBalanceHint" class="panel-hint">No split activity yet.</p>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Recent spending</h3>
+            </div>
+            <ul id="recentExpensesList" class="mini-list"></ul>
+          </section>
+        </section>
+
+        <section id="expenses" class="view" aria-label="Expenses section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Track</p>
+              <h2>Expenses</h2>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3 id="expenseFormTitle">Add expense</h3>
+            </div>
+            <form id="expenseForm" class="stack-form" novalidate>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="expenseName">Expense name</label>
+                  <input id="expenseName" name="name" type="text" maxlength="80" placeholder="Hostel lunch" />
+                </div>
+                <div class="field">
+                  <label for="expenseAmount">Amount</label>
+                  <input id="expenseAmount" name="amount" type="number" min="0.01" step="0.01" placeholder="450" />
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="expenseCategory">Category</label>
+                  <select id="expenseCategory" name="category">
+                    <option value="Food">Food</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Shopping">Shopping</option>
+                    <option value="Bills">Bills</option>
+                    <option value="Education">Education</option>
+                    <option value="Entertainment">Entertainment</option>
+                    <option value="Health">Health</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="expenseDate">Date</label>
+                  <input id="expenseDate" name="date" type="date" />
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="expenseNote">Note (optional)</label>
+                <textarea id="expenseNote" name="note" rows="3" maxlength="180" placeholder="Optional details"></textarea>
+              </div>
+
+              <div class="inline-actions">
+                <button type="submit" class="primary-button">Save expense</button>
+                <button type="button" id="cancelExpenseEdit" class="secondary-button hidden">Cancel edit</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header toolbar-row">
+              <h3>Recent expenses</h3>
+            </div>
+            <div class="toolbar-row compact-gap">
+              <input id="expenseSearch" type="search" placeholder="Search expenses" aria-label="Search expenses" />
+              <select id="expenseCategoryFilter" aria-label="Filter by category">
+                <option value="All">All categories</option>
+                <option value="Food">Food</option>
+                <option value="Rent">Rent</option>
+                <option value="Travel">Travel</option>
+                <option value="Shopping">Shopping</option>
+                <option value="Bills">Bills</option>
+                <option value="Education">Education</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Health">Health</option>
+                <option value="Other">Other</option>
+              </select>
+              <select id="expenseMonthFilter" aria-label="Filter expenses by month"></select>
+            </div>
+            <div id="expenseList" class="expense-list" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <section id="split" class="view" aria-label="Split expense section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Friends</p>
+              <h2>Split expense</h2>
+            </div>
+          </div>
+
+          <div class="panel-grid split-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Add shared expense</h3>
+              </div>
+              <form id="splitForm" class="stack-form" novalidate>
+                <div class="field">
+                  <label for="splitDescription">Expense description</label>
+                  <input id="splitDescription" type="text" maxlength="80" placeholder="Dinner" />
+                </div>
+
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="splitAmount">Total amount</label>
+                    <input id="splitAmount" type="number" min="0.01" step="0.01" placeholder="600" />
+                  </div>
+                  <div class="field">
+                    <label for="splitDate">Date</label>
+                    <input id="splitDate" type="date" />
+                  </div>
+                </div>
+
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="splitPaidBy">Paid by</label>
+                    <input id="splitPaidBy" type="text" maxlength="40" placeholder="Akash" />
+                  </div>
+                  <div class="field">
+                    <label for="splitGroup">Group</label>
+                    <select id="splitGroup"></select>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="splitParticipants">Participants</label>
+                  <input id="splitParticipants" type="text" placeholder="Akash, Rahul, Aman" />
+                </div>
+
+                <div class="inline-actions">
+                  <button type="submit" class="primary-button">Save split</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Balance summary</h3>
+              </div>
+              <div id="splitSummary" class="balances-list" aria-live="polite"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Settlements</h3>
+            </div>
+
+            <form id="settlementForm" class="stack-form" novalidate>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="settlementFrom">From</label>
+                  <input id="settlementFrom" type="text" maxlength="40" placeholder="Rahul" />
+                </div>
+                <div class="field">
+                  <label for="settlementTo">To</label>
+                  <input id="settlementTo" type="text" maxlength="40" placeholder="Akash" />
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="settlementAmount">Amount</label>
+                  <input id="settlementAmount" type="number" min="0.01" step="0.01" placeholder="300" />
+                </div>
+                <div class="field">
+                  <label for="settlementDate">Date</label>
+                  <input id="settlementDate" type="date" />
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button type="submit" class="primary-button">Add settlement</button>
+              </div>
+            </form>
+
+            <div id="settlementList" class="settlement-list"></div>
+          </section>
+        </section>
+
+        <section id="groups" class="view" aria-label="Groups section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Shared</p>
+              <h2>Groups</h2>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Create group</h3>
+            </div>
+            <form id="groupForm" class="stack-form" novalidate>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="groupName">Group name</label>
+                  <input id="groupName" type="text" maxlength="50" placeholder="Roommates" />
+                </div>
+                <div class="field">
+                  <label for="groupMembers">Members</label>
+                  <input id="groupMembers" type="text" placeholder="Akash, Rahul, Aman" />
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button type="submit" class="primary-button">Create group</button>
+              </div>
+            </form>
+          </section>
+
+          <div id="groupList" class="group-list"></div>
+        </section>
+
+        <section id="statistics" class="view" aria-label="Statistics section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Insights</p>
+              <h2>Statistics</h2>
+            </div>
+          </div>
+
+          <div class="kpi-grid stats-grid">
+            <article class="kpi-card">
+              <p>Total spending</p>
+              <h3 id="totalSpendingStat">₹0</h3>
+            </article>
+            <article class="kpi-card">
+              <p>Largest expense</p>
+              <h3 id="largestExpenseStat">₹0</h3>
+            </article>
+            <article class="kpi-card">
+              <p>Average expense</p>
+              <h3 id="averageExpenseStat">₹0</h3>
+            </article>
+            <article class="kpi-card">
+              <p>Number of expenses</p>
+              <h3 id="expenseNumberStat">0</h3>
+            </article>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Spending by category</h3>
+            </div>
+            <div id="categoryChart" class="category-chart"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Monthly history</h3>
+            </div>
+            <div id="monthlyHistory" class="history-list"></div>
+          </section>
+        </section>
+
+        <section id="settings" class="view" aria-label="Settings section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Preferences</p>
+              <h2>Settings</h2>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>App preferences</h3>
+            </div>
+
+            <div class="settings-list">
+              <div class="setting-item">
+                <div>
+                  <strong>Currency</strong>
+                  <small>Default: Indian Rupee (₹)</small>
+                </div>
+                <select id="currencySelect" aria-label="Currency selection">
+                  <option value="INR">INR (₹)</option>
+                </select>
+              </div>
+
+              <div class="setting-item">
+                <div>
+                  <strong>Current user</strong>
+                  <small>Used for personal split balances.</small>
+                </div>
+                <input id="currentUserInput" type="text" maxlength="40" placeholder="Akash" />
+              </div>
+
+              <div class="setting-item toggle-item">
+                <div>
+                  <strong>Dark mode</strong>
+                  <small>Light and dark theme</small>
+                </div>
+                <button id="settingsThemeToggle" class="secondary-button" type="button">Toggle theme</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Data management</h3>
+            </div>
+            <div class="settings-actions">
+              <button id="demoDataBtn" class="secondary-button" type="button">Load demo data</button>
+              <button id="exportDataBtn" class="secondary-button" type="button">Export JSON</button>
+              <label class="secondary-button import-button">
+                Import JSON
+                <input id="importDataInput" type="file" accept="application/json" />
+              </label>
+              <button id="clearDataBtn" class="danger-button" type="button">Clear all data</button>
+            </div>
+          </section>
+
+          <section class="panel privacy-panel">
+            <div class="panel-header">
+              <h3>Privacy</h3>
+            </div>
+            <p>
+              Version 1 stores all data locally in your browser using <strong>localStorage</strong>.
+              Nothing is sent anywhere, and no external API is used.
+            </p>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
