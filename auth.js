@@ -1,4 +1,4 @@
-/* SplitMate Phase 1 authentication. No expense or budget synchronization is performed. */
+/* SplitMate Phase 1 authentication. Auth only; expense data remains localStorage-only. */
 (function () {
   'use strict';
 
@@ -9,65 +9,160 @@
     url: String(supplied.url || '').trim(),
     anonKey: String(supplied.anonKey || '').trim()
   };
-  const configured = config.url && config.anonKey && config.url !== PLACEHOLDER_URL && config.anonKey !== PLACEHOLDER_KEY;
+  const configured = Boolean(
+    /^https:\/\/[^\s/]+\.supabase\.co\/?$/.test(config.url) &&
+    config.url !== PLACEHOLDER_URL &&
+    config.anonKey &&
+    config.anonKey !== PLACEHOLDER_KEY
+  );
+
   let client = null;
-  let authSubscription = null;
+  let subscription = null;
+  let initialized = false;
 
-  const escapeText = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
   const root = () => document.getElementById('authRoot');
-  const status = (text, type = '') => { const element = document.getElementById('authStatus'); if (element) { element.textContent = text; element.className = `auth-status ${type}`; } };
-  const style = document.createElement('style');
-  style.textContent = '.auth-card{display:grid;gap:12px}.auth-grid{display:grid;gap:10px}.auth-actions{display:flex;gap:8px;flex-wrap:wrap}.auth-status{padding:10px 12px;border-radius:12px;background:var(--surface-alt);color:var(--text-soft);font-size:.86rem}.auth-status.success{color:var(--success)}.auth-status.error{color:var(--danger)}.auth-note{margin:0;color:var(--text-soft);font-size:.82rem;line-height:1.5}';
-  document.head.appendChild(style);
+  const escapeText = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+  }[character]));
 
-  function render(user) {
+  const setStatus = (message, type = '') => {
+    const element = document.getElementById('authStatus');
+    if (!element) return;
+    element.textContent = message;
+    element.className = `auth-status ${type}`.trim();
+  };
+
+  const addStyles = () => {
+    if (document.getElementById('splitmate-auth-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'splitmate-auth-styles';
+    style.textContent = `
+      .auth-card{display:grid;gap:12px}.auth-grid{display:grid;gap:10px}.auth-actions{display:flex;gap:8px;flex-wrap:wrap}.auth-status{padding:10px 12px;border-radius:12px;background:var(--surface-alt);color:var(--text-soft);line-height:1.45}.auth-status.success{background:var(--success-soft);color:var(--success)}.auth-status.error{background:var(--danger-soft);color:var(--danger)}.auth-note{margin:0;color:var(--text-soft);font-size:.84rem;line-height:1.5}.auth-card code{overflow-wrap:anywhere}
+    `;
+    document.head.appendChild(style);
+  };
+
+  const renderLocalMode = (message = 'Local-only mode is active. Configure the Supabase URL and public client key to enable authentication.') => {
     const element = root();
     if (!element) return;
+    element.innerHTML = `<div class="auth-card"><div id="authStatus" class="auth-status">${escapeText(message)}</div><p class="auth-note">Authentication is optional. Expenses, budgets, groups, statistics, import/export, and dark mode continue to use localStorage.</p></div>`;
+  };
+
+  const credentials = () => ({
+    email: String(document.getElementById('authEmail')?.value || '').trim(),
+    password: String(document.getElementById('authPassword')?.value || '')
+  });
+
+  const validate = ({ email, password }) => {
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setStatus('Enter a valid email address.', 'error');
+      return false;
+    }
+    if (password.length < 6) {
+      setStatus('Password must be at least 6 characters.', 'error');
+      return false;
+    }
+    return true;
+  };
+
+  const renderSignedOut = () => {
+    const element = root();
+    if (!element) return;
+    element.innerHTML = `
+      <div class="auth-card">
+        <div id="authStatus" class="auth-status">Signed out. Sign in to enable your optional account.</div>
+        <div class="auth-grid">
+          <div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" /></div>
+          <div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters" /></div>
+        </div>
+        <div class="auth-actions"><button id="signInButton" class="primary-button" type="button">Sign in</button><button id="signUpButton" class="secondary-button" type="button">Sign up</button></div>
+        <p class="auth-note">Phase 1 authentication does not upload or synchronize expense data.</p>
+      </div>`;
+
+    document.getElementById('signInButton').addEventListener('click', async () => {
+      const values = credentials();
+      if (!validate(values)) return;
+      setStatus('Signing in…');
+      const { error } = await client.auth.signInWithPassword(values);
+      if (error) setStatus(error.message || 'Sign-in failed. Try again.', 'error');
+      else setStatus('Signed in successfully.', 'success');
+    });
+
+    document.getElementById('signUpButton').addEventListener('click', async () => {
+      const values = credentials();
+      if (!validate(values)) return;
+      setStatus('Creating account…');
+      const { data, error } = await client.auth.signUp(values);
+      if (error) {
+        setStatus(error.message || 'Sign-up failed. Try again.', 'error');
+      } else if (data?.session) {
+        setStatus('Account created and signed in.', 'success');
+      } else {
+        setStatus('Account created. Check your email to confirm it, then sign in.', 'success');
+      }
+    });
+  };
+
+  const renderSignedIn = (user) => {
+    const element = root();
+    if (!element) return;
+    element.innerHTML = `<div class="auth-card"><div id="authStatus" class="auth-status success">Signed in as <strong>${escapeText(user.email || 'Authenticated user')}</strong></div><div class="auth-actions"><button id="signOutButton" class="secondary-button" type="button">Sign out</button></div><p class="auth-note">Your SplitMate expense data remains local until cloud synchronization is implemented.</p></div>`;
+    document.getElementById('signOutButton').addEventListener('click', async () => {
+      setStatus('Signing out…');
+      const { error } = await client.auth.signOut();
+      if (error) setStatus(error.message || 'Sign-out failed. Try again.', 'error');
+    });
+  };
+
+  const render = (user = null) => {
     if (!configured || !client) {
-      element.innerHTML = '<div class="auth-card"><div class="auth-status">Local-only mode is active. Configure the public Supabase URL and key in <code>auth.js</code> to enable authentication. Existing localStorage data is unchanged.</div></div>';
+      renderLocalMode(!configured ? undefined : 'Supabase SDK is unavailable. Local-only mode is active.');
       return;
     }
-    if (user) {
-      element.innerHTML = `<div class="auth-card"><div class="auth-status success">Signed in as <strong>${escapeText(user.email || 'Authenticated user')}</strong></div><p class="auth-note">Authentication is active. Cloud expense synchronization is not enabled yet; all SplitMate data remains local.</p><div class="auth-actions"><button id="signOutButton" class="secondary-button" type="button">Sign out</button></div></div>`;
-      document.getElementById('signOutButton').addEventListener('click', async () => {
-        status('Signing out…');
-        const { error } = await client.auth.signOut();
-        if (error) status(error.message, 'error');
-      }, { once: true });
+    if (user) renderSignedIn(user);
+    else renderSignedOut();
+  };
+
+  const initialize = () => {
+    if (initialized) return;
+    initialized = true;
+    addStyles();
+
+    if (!root()) {
+      console.error('SplitMate authRoot element is missing.');
       return;
     }
-    element.innerHTML = `<div class="auth-card"><div class="auth-grid"><div class="field"><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></div><div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="At least 6 characters"></div></div><div class="auth-actions"><button id="signInButton" class="primary-button" type="button">Sign in</button><button id="signUpButton" class="secondary-button" type="button">Create account</button></div><div id="authStatus" class="auth-status">Signed out. LocalStorage mode remains active.</div><p class="auth-note">Phase 1 only manages authentication. It does not migrate or upload existing local data.</p></div>`;
-    const credentials = () => ({ email: document.getElementById('authEmail').value.trim(), password: document.getElementById('authPassword').value });
-    const validate = ({ email, password }) => { if (!email || !email.includes('@')) { status('Enter a valid email address.', 'error'); return false; } if (password.length < 6) { status('Password must be at least 6 characters.', 'error'); return false; } return true; };
-    document.getElementById('signInButton').addEventListener('click', async () => { const values = credentials(); if (!validate(values)) return; status('Signing in…'); const { error } = await client.auth.signInWithPassword(values); if (error) status(error.message, 'error'); }, { once: true });
-    document.getElementById('signUpButton').addEventListener('click', async () => { const values = credentials(); if (!validate(values)) return; status('Creating account…'); const { data, error } = await client.auth.signUp({ ...values, options: { emailRedirectTo: window.location.href } }); if (error) status(error.message, 'error'); else status(data.session ? 'Account created and signed in.' : 'Account created. Check your email to confirm it.', 'success'); }, { once: true });
-  }
+    if (!configured) {
+      renderLocalMode();
+      return;
+    }
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+      renderLocalMode('Supabase SDK could not be loaded. Local-only mode is active.');
+      return;
+    }
 
-  function ensureRoot() {
-    if (root()) return;
-    const settings = document.getElementById('settings');
-    const panel = settings && settings.querySelector('.panel');
-    if (!panel) return;
-    const heading = document.createElement('div'); heading.className = 'panel-header'; heading.innerHTML = '<h3>Account</h3>';
-    const account = document.createElement('div'); account.id = 'authRoot';
-    panel.before(heading, account);
-  }
+    try {
+      client = window.supabase.createClient(config.url, config.anonKey);
+    } catch (error) {
+      console.error('Supabase client initialization failed:', error);
+      renderLocalMode('Supabase configuration is invalid. Local-only mode is active.');
+      return;
+    }
 
-  function initialize() {
-    ensureRoot();
-    if (window.supabase && configured) client = window.supabase.createClient(config.url, config.anonKey);
     render(null);
-    if (!client) return;
-    client.auth.getSession().then(({ data, error }) => { if (error) status(error.message, 'error'); render(data && data.session ? data.session.user : null); });
-    if (authSubscription) authSubscription.unsubscribe();
-    authSubscription = client.auth.onAuthStateChange((_event, session) => render(session && session.user ? session.user : null)).data.subscription;
-  }
+    client.auth.getSession().then(({ data, error }) => {
+      if (error) setStatus(error.message || 'Could not restore the auth session.', 'error');
+      render(data?.session?.user || null);
+    }).catch((error) => {
+      console.error('Supabase session restoration failed:', error);
+      setStatus('Could not restore the auth session. You can try signing in again.', 'error');
+    });
 
-  function loadSupabaseAndInitialize() {
-    if (window.supabase || !configured) { initialize(); return; }
-    const sdk = document.createElement('script'); sdk.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'; sdk.async = true; sdk.onload = initialize; sdk.onerror = () => { ensureRoot(); render(null); }; document.head.appendChild(sdk);
-  }
+    const result = client.auth.onAuthStateChange((_event, session) => render(session?.user || null));
+    subscription = result?.data?.subscription || null;
+  };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadSupabaseAndInitialize, { once: true }); else loadSupabaseAndInitialize();
   window.SplitMateAuth = { getClient: () => client };
-})();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
+  else initialize();
+}());
